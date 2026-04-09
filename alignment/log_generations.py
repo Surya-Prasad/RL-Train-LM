@@ -1,7 +1,7 @@
 import torch
 import wandb
 import numpy as np
-from adapters import run_tokenize_prompt_and_output, run_get_response_log_probs
+from adapters import tokenize_prompt_and_output, get_response_log_probs
 
 def get_rewards_and_lengths(responses, truths, token_ids, reward_func): 
     reward_total, reward_format, response_reward = list(), list(), list()
@@ -38,7 +38,7 @@ def get_entropy(prompts, responses, policy_model, tokenizer, device = "cuda"):
     entropy_list = list()
 
     for prompt, gen_text in zip(prompts, responses): 
-        tknzd = run_tokenize_prompt_and_output(prompt, gen_text, tokenizer, device)
+        tknzd = tokenize_prompt_and_output(prompt, gen_text, tokenizer, device)
         if not tknzd: 
             entropy_list.append(0.0)
             continue
@@ -48,7 +48,7 @@ def get_entropy(prompts, responses, policy_model, tokenizer, device = "cuda"):
         mask = tknzd["response_mask"].to(device)
 
         with(torch.no_grad()): 
-            dict_log_p = run_get_response_log_probs(policy_model, input_ids, labels, True)
+            dict_log_p = get_response_log_probs(policy_model, input_ids, labels, True)
 
         entropy_tensor = dict_log_p["token_entropy"]
         mask_sum = mask.sum().float()
