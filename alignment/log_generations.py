@@ -3,6 +3,7 @@ import wandb
 import numpy as np
 from tests.adapters import tokenize_prompt_and_output, get_response_log_probs
 
+
 def get_rewards_and_lengths(responses, truths, token_ids, reward_func): 
     reward_total, reward_format, response_reward = list(), list(), list()
     resp_len, correct_resp_len, incorr_resp_len = list(), list(), list()
