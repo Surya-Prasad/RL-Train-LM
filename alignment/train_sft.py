@@ -10,7 +10,8 @@ from tests.adapters import (
     run_get_response_log_probs,
     run_sft_microbatch_train_step
 )
-from sft_modules import log_generations, init_vllm, load_policy_into_vllm_instance
+from sft_modules import init_vllm, load_policy_into_vllm_instance
+from log_generations import log_generations
 # Assuming your reward function is accessible
 from alignment.drgrpo_grader import r1_zero_reward_fn
 
