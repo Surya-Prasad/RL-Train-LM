@@ -186,7 +186,7 @@ def run_get_response_log_probs(
 
     return {
         "log_probs": log_p.float(),
-        "token_entropy": entropy.float()
+        "token_entropy": entropy.float() if entropy is not None else None
     }
 
 
