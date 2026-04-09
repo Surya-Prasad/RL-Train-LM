@@ -138,8 +138,11 @@ def run_compute_group_normalized_rewards(
 def run_compute_entropy(logits: torch.Tensor) -> torch.Tensor:
     """Get the entropy of the logits (i.e., entropy of the final dimension)."""
     # print(logits.shape)
-    log_p_x = torch.log_softmax(logits, dim=-1)
-    p_x = torch.softmax(logits, dim=-1)
+    # Note: you should use a numerically stable method (e.g., using logsumexp) to avoid overflow.
+
+    log_denom = torch.logsumexp(logits, dim=-1, keepdim=True)
+    log_p_x = logits - log_denom
+    p_x = torch.exp(log_p_x)
     entropy = -1 * (p_x * log_p_x).sum(dim=-1)
     return entropy
 
@@ -173,7 +176,10 @@ def run_get_response_log_probs(
                 we have not masked out the token indices corresponding to the prompt
                 or padding; that is done in the train loop.
     """
+    # logits = model(input_ids).logits
     raise NotImplementedError
+
+
 
 
 def run_compute_naive_policy_gradient_loss(
