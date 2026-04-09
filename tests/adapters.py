@@ -52,8 +52,8 @@ def run_tokenize_prompt_and_output(
     prompt_tknzd = tokenizer(prompt_strs, add_special_tokens=False)["input_ids"]
     output_tknzd = tokenizer(output_strs, add_special_tokens=False)["input_ids"]
 
-    if not isinstance(prompt_tknzd, torch.Tensor) or not isinstance(output_tknzd, torch.Tensor):
-        print(f"run_tokenize_prompt_and_output: No Tensor from Tokenizer - prompt_tknzd: {prompt_tknzd}, output_tknzd: {output_tknzd}")
+    if not prompt_tknzd or not output_tknzd:
+        print(f"run_tokenize_prompt_and_output: No List from Tokenizer - prompt_tknzd: {prompt_tknzd}, output_tknzd: {output_tknzd}")
 
     input_ids_list = list()
     response_mask_list = list()
@@ -137,7 +137,11 @@ def run_compute_group_normalized_rewards(
 
 def run_compute_entropy(logits: torch.Tensor) -> torch.Tensor:
     """Get the entropy of the logits (i.e., entropy of the final dimension)."""
-    raise NotImplementedError
+    # print(logits.shape)
+    log_p_x = torch.log_softmax(logits, dim=-1)
+    p_x = torch.softmax(logits, dim=-1)
+    entropy = -1 * (p_x * log_p_x).sum(dim=-1)
+    return entropy
 
 
 def run_get_response_log_probs(
