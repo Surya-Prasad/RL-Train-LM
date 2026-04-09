@@ -33,7 +33,7 @@ def run_tokenize_prompt_and_output(
     """
 
     """
-    print(text_tknzd)
+    print(prompt_tknzd)
     {'input_ids': tensor([[  9707,     11,   1879,      0,   9707,     11,   1879,      0, 151643],
         [  1986,    374,    264,   1273,  28745,    374,    264,   1273,     13],
         [  1986,    374,   2441,   1273,  28745,    374,   2441,   1273,     13]]), 'attention_mask': tensor([[1, 1, 1, 1, 1, 1, 1, 1, 0],
@@ -56,21 +56,43 @@ def run_tokenize_prompt_and_output(
         concatenated.append(prompt_strs[i] + output_strs[i] + tokenizer.eos_token)
 
     # https://huggingface.co/docs/transformers/en/internal/tokenization_utils
-    text_tknzd = tokenizer(concatenated, padding = True, return_tensors = "pt", add_special_tokens=False) 
-    prompt_tknzd = tokenizer(prompt_strs, padding = True, return_tensors = "pt", add_special_tokens=False)
+    prompt_tknzd = tokenizer(prompt_strs, add_special_tokens=False)["input_ids"]
+    output_tknzd = tokenizer(output_strs, add_special_tokens=False)["input_ids"]
 
-    text_input_ids = text_tknzd["input_ids"]
-    prompt_input_ids = prompt_tknzd["input_ids"]
+    if not isinstance(prompt_tknzd, torch.Tensor) or not isinstance(output_tknzd, torch.Tensor):
+        print(f"run_tokenize_prompt_and_output: No Tensor from Tokenizer - prompt_tknzd: {prompt_tknzd}, output_tknzd: {output_tknzd}")
 
-    if not isinstance(text_input_ids, torch.Tensor) or not isinstance(prompt_input_ids, torch.Tensor):
-        print(f"run_tokenize_prompt_and_output: No Tensor from Tokenizer - text_tknzd: {text_tknzd}, prompt_tknzd: {prompt_tknzd}")
-    
-    response_mask = torch.zeros_like(text_input_ids, dtype=torch.bool)
+    input_ids_list = list()
+    response_mask_list = list()
+    max_text_len = 0
     for i in range(prompt_len): 
-        text_splice_len = (text_input_ids[i] != tokenizer.pad_token_id).sum().item()
-        prompt_splice_len = (prompt_input_ids[i] != tokenizer.pad_token_id).sum().item()
-        response_mask[i, prompt_splice_len:text_splice_len] = True
-    
+        prompt_ids = prompt_tknzd[i]
+        output_ids = output_tknzd[i] 
+
+        text_ids = prompt_ids + output_ids
+
+        mask = [False] * len(prompt_ids) + [True] * len(output_ids)
+
+        # print(mask)
+        # break
+
+        input_ids_list.append(torch.tensor(text_ids))
+        response_mask_list.append(torch.tensor(mask))
+
+        max_text_len = max(max_text_len, len(text_ids))
+
+    batch_size = len(input_ids_list)
+
+    print(input_ids_list, response_mask_list)
+
+    text_input_ids = torch.full((batch_size, max_text_len), fill_value=tokenizer.pad_token_id, dtype=torch.long)
+    response_mask = torch.full((batch_size, max_text_len), fill_value=False, dtype=torch.bool)
+
+    for i in range(batch_size):
+        seq_len = input_ids_list[i].shape[0]
+        text_input_ids[i, :seq_len] = input_ids_list[i]
+        response_mask[i, :seq_len] = response_mask_list[i]
+
     return {
         "input_ids": text_input_ids[:, :-1], 
         "labels": text_input_ids[:, 1:],
