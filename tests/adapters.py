@@ -31,7 +31,52 @@ def run_tokenize_prompt_and_output(
             "response_mask": torch.Tensor of shape (batch_size, max(prompt_and_output_lens) - 1):
                 a mask on the response tokens in `labels`.
     """
-    raise NotImplementedError
+
+    """
+    print(text_tknzd)
+    {'input_ids': tensor([[  9707,     11,   1879,      0,   9707,     11,   1879,      0, 151643],
+        [  1986,    374,    264,   1273,  28745,    374,    264,   1273,     13],
+        [  1986,    374,   2441,   1273,  28745,    374,   2441,   1273,     13]]), 'attention_mask': tensor([[1, 1, 1, 1, 1, 1, 1, 1, 0],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1],
+        [1, 1, 1, 1, 1, 1, 1, 1, 1]])}
+    """
+    # raise NotImplementedError
+    prompt_len = len(prompt_strs)
+    output_len = len(output_strs)
+
+    if prompt_len < 1 or output_len < 1 or prompt_len != output_len: 
+        print(f"run_tokenize_prompt_and_output: Length Mismatch, prompt: {prompt_len}, output: {output_len}")
+        return {}
+    
+    # print(prompt_strs[0])
+    # print(output_strs[0])
+
+    concatenated = list()
+    for i in range(prompt_len): 
+        concatenated.append(prompt_strs[i] + output_strs[i] + tokenizer.eos_token)
+
+    # https://huggingface.co/docs/transformers/en/internal/tokenization_utils
+    text_tknzd = tokenizer(concatenated, padding = True, return_tensors = "pt", add_special_tokens=False) 
+    prompt_tknzd = tokenizer(prompt_strs, padding = True, return_tensors = "pt", add_special_tokens=False)
+
+    text_input_ids = text_tknzd["input_ids"]
+    prompt_input_ids = prompt_tknzd["input_ids"]
+
+    if not isinstance(text_input_ids, torch.Tensor) or not isinstance(prompt_input_ids, torch.Tensor):
+        print(f"run_tokenize_prompt_and_output: No Tensor from Tokenizer - text_tknzd: {text_tknzd}, prompt_tknzd: {prompt_tknzd}")
+    
+    response_mask = torch.zeros_like(text_input_ids, dtype=torch.bool)
+    for i in range(prompt_len): 
+        text_splice_len = (text_input_ids[i] != tokenizer.pad_token_id).sum().item()
+        prompt_splice_len = (prompt_input_ids[i] != tokenizer.pad_token_id).sum().item()
+        response_mask[i, prompt_splice_len:text_splice_len] = True
+    
+    return {
+        "input_ids": text_input_ids[:, :-1], 
+        "labels": text_input_ids[:, 1:],
+        "response_mask": response_mask[:, 1:]
+    } 
+
 
 
 def run_compute_group_normalized_rewards(
