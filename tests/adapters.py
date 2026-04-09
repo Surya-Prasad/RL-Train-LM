@@ -40,20 +40,13 @@ def run_tokenize_prompt_and_output(
         [1, 1, 1, 1, 1, 1, 1, 1, 1],
         [1, 1, 1, 1, 1, 1, 1, 1, 1]])}
     """
-    # raise NotImplementedError
+
     prompt_len = len(prompt_strs)
     output_len = len(output_strs)
 
     if prompt_len < 1 or output_len < 1 or prompt_len != output_len: 
         print(f"run_tokenize_prompt_and_output: Length Mismatch, prompt: {prompt_len}, output: {output_len}")
         return {}
-    
-    # print(prompt_strs[0])
-    # print(output_strs[0])
-
-    concatenated = list()
-    for i in range(prompt_len): 
-        concatenated.append(prompt_strs[i] + output_strs[i] + tokenizer.eos_token)
 
     # https://huggingface.co/docs/transformers/en/internal/tokenization_utils
     prompt_tknzd = tokenizer(prompt_strs, add_special_tokens=False)["input_ids"]
@@ -73,17 +66,12 @@ def run_tokenize_prompt_and_output(
 
         mask = [False] * len(prompt_ids) + [True] * len(output_ids)
 
-        # print(mask)
-        # break
-
         input_ids_list.append(torch.tensor(text_ids))
         response_mask_list.append(torch.tensor(mask))
 
         max_text_len = max(max_text_len, len(text_ids))
 
     batch_size = len(input_ids_list)
-
-    print(input_ids_list, response_mask_list)
 
     text_input_ids = torch.full((batch_size, max_text_len), fill_value=tokenizer.pad_token_id, dtype=torch.long)
     response_mask = torch.full((batch_size, max_text_len), fill_value=False, dtype=torch.bool)
