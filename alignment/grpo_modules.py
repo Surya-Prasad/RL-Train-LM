@@ -80,3 +80,28 @@ def compute_policy_gradient_loss(policy_log_probs, loss_type, raw_rewards, advan
     
     return loss, log_pgc
 
+def masked_mean(tensor, mask, dim):
+    mask = mask.to(tensor.dtype)
+    tensor_masked = tensor * mask 
+    if dim is None: 
+        return tensor_masked.sum() / mask.sum()
+    else: 
+        return tensor_masked.sum(dim=dim) / mask.sum(dim=dim)
+    
+
+def grpo_microbatch_train_step(policy_log_probs, response_mask, gradient_accumulation_steps, loss_type, raw_rewards, advantages, old_log_probs, cliprange):
+    loss_per_token, log_grpo_train_step = compute_policy_gradient_loss(policy_log_probs, loss_type, raw_rewards, advantages, old_log_probs, cliprange)
+    loss_per_example = masked_mean(loss_per_token, response_mask, dim=1)
+
+    unscaled_loss = loss_per_example.mean()
+    scaled_loss = unscaled_loss / gradient_accumulation_steps
+    scaled_loss.backward()
+
+    log_grpo_train_step['unscaled_loss'] = unscaled_loss.detach()
+    log_grpo_train_step['scaled_loss'] = scaled_loss.detach()   
+
+    return scaled_loss, log_grpo_train_step
+
+
+
+    
