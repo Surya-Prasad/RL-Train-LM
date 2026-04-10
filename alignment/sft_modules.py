@@ -3,6 +3,14 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizerBase
 import numpy as np
+from unittest.mock import patch
+# Since vLLM isn't available on Mac:
+try:
+    from vllm import LLM
+    from vllm.model_executor import set_random_seed as vllm_set_random_seed
+except ImportError:
+    LLM = None
+from transformers import PreTrainedModel
 
 def tokenize_prompt_and_output(prompt_strs, output_strs, tokenizer): 
     prompt_len = len(prompt_strs)
@@ -97,13 +105,6 @@ def sft_microbatch_train_step(policy_log_probs, response_mask, gradient_accumula
     }
 
     return scaled_loss, metadata
-
-
-import torch
-from unittest.mock import patch
-from vllm import LLM
-from vllm.model_executor import set_random_seed as vllm_set_random_seed
-from transformers import PreTrainedModel
 
 def init_vllm(model_id: str, device: str, seed: int, gpu_memory_utilization: float = 0.85):
     """
