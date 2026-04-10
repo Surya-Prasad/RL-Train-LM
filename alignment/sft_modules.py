@@ -3,14 +3,6 @@ from torch import Tensor
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizerBase
 import numpy as np
-from unittest.mock import patch
-# Since vLLM isn't available on Mac:
-try:
-    from vllm import LLM
-    from vllm.model_executor import set_random_seed as vllm_set_random_seed
-except ImportError:
-    LLM = None
-from transformers import PreTrainedModel
 
 def tokenize_prompt_and_output(prompt_strs, output_strs, tokenizer): 
     prompt_len = len(prompt_strs)
@@ -21,8 +13,21 @@ def tokenize_prompt_and_output(prompt_strs, output_strs, tokenizer):
         return {}
 
     # https://huggingface.co/docs/transformers/en/internal/tokenization_utils
-    prompt_tknzd = tokenizer(prompt_strs, add_special_tokens=False)["input_ids"]
-    output_tknzd = tokenizer(output_strs, add_special_tokens=False)["input_ids"]
+    MAX_LEN = 2048 
+
+    prompt_tknzd = tokenizer(
+        prompt_strs, 
+        add_special_tokens=False, 
+        truncation=True, 
+        max_length=MAX_LEN
+    )["input_ids"]
+
+    output_tknzd = tokenizer(
+        output_strs, 
+        add_special_tokens=False, 
+        truncation=True, 
+        max_length=MAX_LEN
+    )["input_ids"]
 
     if not prompt_tknzd or not output_tknzd:
         print(f"run_tokenize_prompt_and_output: No List from Tokenizer - prompt_tknzd: {prompt_tknzd}, output_tknzd: {output_tknzd}")
@@ -105,32 +110,3 @@ def sft_microbatch_train_step(policy_log_probs, response_mask, gradient_accumula
     }
 
     return scaled_loss, metadata
-
-def init_vllm(model_id: str, device: str, seed: int, gpu_memory_utilization: float = 0.85):
-    """
-    Start the inference process, here we use vLLM to hold a model on
-    a GPU separate from the policy.
-    """
-    vllm_set_random_seed(seed)
-    world_size_patch = patch("torch.distributed.get_world_size", return_value=1)
-    profiling_patch = patch(
-        "vllm.worker.worker.Worker._assert_memory_footprint_increased_during_profiling",
-        return_value=None
-    )
-    
-    with world_size_patch, profiling_patch:
-        return LLM(
-            model=model_id,
-            device=device,
-            dtype=torch.bfloat16,  # Use torch.bfloat16 as requested in the assignment
-            enable_prefix_caching=True,
-            gpu_memory_utilization=gpu_memory_utilization,
-        )
-
-def load_policy_into_vllm_instance(policy: PreTrainedModel, llm: LLM):
-    """
-    Copied from https://github.com/huggingface/trl/blob/22759c820867c8659d00082ba8cf004e963873c1/trl/trainer/grpo_trainer.py#L670.
-    """
-    state_dict = policy.state_dict()
-    llm_model = llm.llm_engine.model_executor.driver_worker.model_runner.model
-    llm_model.load_weights(state_dict.items())
