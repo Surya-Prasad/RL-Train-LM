@@ -21,13 +21,17 @@ def load_sft_data(filepath: str, max_examples: int = None):
         data = [json.loads(line) for line in f]
     if max_examples:
         data = data[:max_examples]
-    return [d["prompt"] for d in data], [d["response"] for d in data]
+        
+    prompts = [d.get("prompt", d.get("problem")) for d in data]
+    responses = [d.get("response", d.get("solution")) for d in data]
+    
+    return prompts, responses
 
 def main(
     data_path: str = "data/sft.jsonl",
     val_data_path: str = "data/MATH/validation.jsonl",
-    model_id: str = "models/Qwen2.5-Math-1.5B",
-    output_dir: str = "models/Qwen2.5-Math-1.5B-SFT",
+    model_id: str = "Qwen/Qwen2.5-Math-1.5B",
+    output_dir: str = "Qwen/Qwen2.5-Math-1.5B-SFT",
     max_examples: int = None,
     epochs: int = 3,
     train_batch_size: int = 16,
@@ -59,7 +63,7 @@ def main(
     optimizer = torch.optim.AdamW(policy_model.parameters(), lr=learning_rate)
 
     # Initialize vLLM for validation evaluations
-    vllm_engine = init_vllm(model_id=model_id, device=device, seed=42069)
+    vllm_engine = init_vllm(model_id=model_id, device=device, seed=42069, gpu_memory_utilization=0.4)
     from vllm import SamplingParams
     eval_sampling_params = SamplingParams(
         temperature=1.0, top_p=1.0, max_tokens=1024, stop=["</answer>"], include_stop_str_in_output=True
@@ -96,7 +100,7 @@ def main(
                 model=policy_model,
                 input_ids=input_ids,
                 labels=labels,
-                return_token_entropy=True
+                return_token_entropy=False
             )
 
             # Compute SFT Loss and Backprop 
@@ -130,12 +134,12 @@ def main(
                     load_policy_into_vllm_instance(policy_model, vllm_engine)
                     
                     log_generations(
-                        vllm_model=vllm_engine,
+                        vllm=vllm_engine,
                         policy_model=policy_model,
                         tokenizer=tokenizer,
                         prompts=val_prompts,
-                        ground_truths=val_targets,
-                        reward_fn=r1_zero_reward_fn,
+                        ground_truth=val_targets,
+                        reward_func=r1_zero_reward_fn,
                         sampling_params=eval_sampling_params,
                         step=eval_step,
                         device=device
@@ -143,6 +147,8 @@ def main(
                     
                     eval_step += 1
                     policy_model.train()
+
+                    torch.cuda.empty_cache()
 
     # --- 6. Save Final Model --- 
     print(f"Saving model to {output_dir}")
@@ -152,3 +158,4 @@ def main(
 
 if __name__ == "__main__":
     typer.run(main)
+
