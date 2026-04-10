@@ -4,6 +4,7 @@ import torch
 import wandb
 import typer
 from tqdm import tqdm
+from vllm import SamplingParams
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from tests.adapters import (
     run_tokenize_prompt_and_output,
@@ -56,7 +57,6 @@ def main(
     optimizer = torch.optim.AdamW(policy_model.parameters(), lr=learning_rate)
 
     vllm_engine = init_vllm(model_id=model_id, device=device, seed=42069)
-    from vllm import SamplingParams
     eval_sampling_params = SamplingParams(
         temperature=1.0, top_p=1.0, max_tokens=1024, stop=["</answer>"], include_stop_str_in_output=True
     )

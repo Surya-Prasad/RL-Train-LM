@@ -48,3 +48,35 @@ def compute_grpo_clip_loss(advantages, policy_log_probs, old_log_probs, cliprang
     }
 
     return loss, log_gClip
+
+
+def compute_policy_gradient_loss(policy_log_probs, loss_type, raw_rewards, advantages, old_log_probs, cliprange): 
+    log_pgc = dict()
+
+    if loss_type == "no_baseline":
+        if raw_rewards is None:
+            raise ValueError("raw_rewards required for no_baseline")
+        loss = compute_naive_policy_gradient_loss(raw_rewards, policy_log_probs)
+
+    elif loss_type == "reinforce_with_baseline":
+        if advantages is None:
+            raise ValueError("advantages required for reinforce_with_baseline")
+        loss = compute_naive_policy_gradient_loss(advantages, policy_log_probs)
+
+    elif loss_type == "grpo_clip":
+        if advantages is None: 
+            raise ValueError("advantages required for grpo_clip")
+        
+        elif old_log_probs is None:
+            raise ValueError("old_log_probs required for grpo_clip")
+
+        elif cliprange is None:
+            raise ValueError("cliprange required for grpo_clip")
+
+        loss, log_pgc = compute_grpo_clip_loss(advantages, policy_log_probs, old_log_probs, cliprange)
+
+    else:
+        raise ValueError(f"Unsupported loss_type: {loss_type}")
+    
+    return loss, log_pgc
+
