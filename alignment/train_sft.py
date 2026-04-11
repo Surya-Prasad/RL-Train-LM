@@ -2,6 +2,7 @@ import os
 import json
 import torch
 import wandb
+# typer for passing sample size in terminal
 import typer
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -10,9 +11,8 @@ from tests.adapters import (
     run_get_response_log_probs,
     run_sft_microbatch_train_step
 )
-from sft_modules import init_vllm, load_policy_into_vllm_instance
+from alignment.vllm_ops import init_vllm, load_policy_into_vllm_instance
 from log_generations import log_generations
-# Assuming your reward function is accessible
 from alignment.drgrpo_grader import r1_zero_reward_fn
 
 def load_sft_data(filepath: str, max_examples: int = None):
@@ -39,7 +39,6 @@ def main(
     learning_rate: float = 2e-5,
     eval_every_n_steps: int = 50,
 ):
-    # --- 1. Setup & WandB Initialization ---
     wandb.init(project="reasoning-sft", config=locals())
     wandb.define_metric("train_step")
     wandb.define_metric("eval_step")
@@ -49,10 +48,8 @@ def main(
     device = "cuda" if torch.cuda.is_available() else "mps"
     micro_batch_size = train_batch_size // gradient_accumulation_steps
 
-    # --- 2. Load Model, Tokenizer, and vLLM ---
     print("Loading tokenizer and model...")
     tokenizer = AutoTokenizer.from_pretrained(model_id)
-    # Using bfloat16 and flash_attention_2 as required
     policy_model = AutoModelForCausalLM.from_pretrained(
         model_id,
         torch_dtype=torch.bfloat16,
@@ -62,40 +59,34 @@ def main(
 
     optimizer = torch.optim.AdamW(policy_model.parameters(), lr=learning_rate)
 
-    # Initialize vLLM for validation evaluations
     vllm_engine = init_vllm(model_id=model_id, device=device, seed=42069, gpu_memory_utilization=0.4)
     from vllm import SamplingParams
     eval_sampling_params = SamplingParams(
         temperature=1.0, top_p=1.0, max_tokens=1024, stop=["</answer>"], include_stop_str_in_output=True
     )
 
-    # --- 3. Load Data ---
     train_prompts, train_responses = load_sft_data(data_path, max_examples)
-    val_prompts, val_targets = load_sft_data(val_data_path, max_examples=1024) # Eval on 1024 examples [cite: 828-829]
+    val_prompts, val_targets = load_sft_data(val_data_path, max_examples=1024) 
     print(f"Loaded {len(train_prompts)} training examples.")
 
-    # --- 4. Training Loop ---
     train_step = 0
     eval_step = 0
 
     for epoch in range(epochs):
         print(f"\n--- Epoch {epoch+1}/{epochs} ---")
         
-        # Simple batching mechanism
         for i in tqdm(range(0, len(train_prompts), micro_batch_size)):
             batch_prompts = train_prompts[i : i + micro_batch_size]
             batch_responses = train_responses[i : i + micro_batch_size]
             
             if not batch_prompts:
                 continue
-
-            # Tokenize prompt and response 
+ 
             tknzd = run_tokenize_prompt_and_output(batch_prompts, batch_responses, tokenizer)
             input_ids = tknzd["input_ids"].to(device)
             labels = tknzd["labels"].to(device)
             response_mask = tknzd["response_mask"].to(device)
 
-            # Forward pass & log probs 
             log_prob_dict = run_get_response_log_probs(
                 model=policy_model,
                 input_ids=input_ids,
@@ -103,17 +94,11 @@ def main(
                 return_token_entropy=False
             )
 
-            # Compute SFT Loss and Backprop 
-            loss, metadata = run_sft_microbatch_train_step(
-                policy_log_probs=log_prob_dict["log_probs"],
-                response_mask=response_mask,
-                gradient_accumulation_steps=gradient_accumulation_steps,
-                normalize_constant=1.0
-            )
+            total_response_tokens = response_mask.sum().item()
+            avg_tokens_per_seq = total_response_tokens / micro_batch_size
+            loss, metadata = run_sft_microbatch_train_step(log_prob_dict["log_probs"],response_mask, gradient_accumulation_steps,avg_tokens_per_seq)
 
-            # Optimizer Step (Accounting for Gradient Accumulation) 
             if (i // micro_batch_size + 1) % gradient_accumulation_steps == 0 or (i + micro_batch_size) >= len(train_prompts):
-                # Gradient Clipping 
                 torch.nn.utils.clip_grad_norm_(policy_model.parameters(), max_norm=1.0)
                 
                 optimizer.step()
@@ -125,12 +110,10 @@ def main(
                 })
                 train_step += 1
 
-                # --- 5. Periodic Evaluation ---
                 if train_step % eval_every_n_steps == 0:
                     print(f"\nRunning evaluation at step {train_step}...")
                     policy_model.eval()
                     
-                    # Sync PyTorch weights to vLLM 
                     load_policy_into_vllm_instance(policy_model, vllm_engine)
                     
                     log_generations(
@@ -150,7 +133,6 @@ def main(
 
                     torch.cuda.empty_cache()
 
-    # --- 6. Save Final Model --- 
     print(f"Saving model to {output_dir}")
     policy_model.save_pretrained(save_directory=output_dir)
     tokenizer.save_pretrained(save_directory=output_dir)

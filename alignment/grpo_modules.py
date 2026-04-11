@@ -15,7 +15,7 @@ def compute_group_normalized_rewards(reward_fn, rollout_responses, repeated_grou
 
     group_means = group_rewards.mean(dim=1, keepdim=True)
     if normalize_by_std:
-        group_stds = group_rewards.std(dim=1, unbiased=True, keepdim=True)
+        group_stds = group_rewards.std(dim=1, keepdim=True)
         advantages = (group_rewards - group_means) / (group_stds + advantage_eps)
     else:
         advantages = group_rewards - group_means
@@ -35,13 +35,14 @@ def compute_naive_policy_gradient_loss(raw_rewards_or_advantages, policy_log_pro
 
 def compute_grpo_clip_loss(advantages, policy_log_probs, old_log_probs, cliprange):
     ratio = torch.exp(policy_log_probs - old_log_probs)
+    clipped_ratio = torch.clamp(ratio, 1.0 - cliprange, 1.0 + cliprange)
 
     objective_unclipped = ratio * advantages
+    objective_clipped = clipped_ratio * advantages
 
-    g_adv = advantages + (cliprange * torch.abs(advantages))
-    loss = -torch.min(objective_unclipped, g_adv)
+    loss = -torch.min(objective_unclipped, objective_clipped)
 
-    is_clipped = (g_adv < objective_unclipped).float()
+    is_clipped = (objective_clipped < objective_unclipped).float()
 
     log_gClip = {
         "clip_fraction": is_clipped.mean(),
@@ -50,7 +51,7 @@ def compute_grpo_clip_loss(advantages, policy_log_probs, old_log_probs, cliprang
     return loss, log_gClip
 
 
-def compute_policy_gradient_loss(policy_log_probs, loss_type, raw_rewards, advantages, old_log_probs, cliprange): 
+def compute_policy_gradient_loss(policy_log_probs, loss_type, raw_rewards = None, advantages = None, old_log_probs = None, cliprange = None): 
     log_pgc = dict()
 
     if loss_type == "no_baseline":
@@ -80,7 +81,7 @@ def compute_policy_gradient_loss(policy_log_probs, loss_type, raw_rewards, advan
     
     return loss, log_pgc
 
-def masked_mean(tensor, mask, dim):
+def masked_mean(tensor, mask, dim = None):
     mask = mask.to(tensor.dtype)
     tensor_masked = tensor * mask 
     if dim is None: 
@@ -89,7 +90,7 @@ def masked_mean(tensor, mask, dim):
         return tensor_masked.sum(dim=dim) / mask.sum(dim=dim)
     
 
-def grpo_microbatch_train_step(policy_log_probs, response_mask, gradient_accumulation_steps, loss_type, raw_rewards, advantages, old_log_probs, cliprange):
+def grpo_microbatch_train_step(policy_log_probs, response_mask, gradient_accumulation_steps, loss_type, raw_rewards = None, advantages = None, old_log_probs = None, cliprange = None):
     loss_per_token, log_grpo_train_step = compute_policy_gradient_loss(policy_log_probs, loss_type, raw_rewards, advantages, old_log_probs, cliprange)
     loss_per_example = masked_mean(loss_per_token, response_mask, dim=1)
 
