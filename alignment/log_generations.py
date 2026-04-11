@@ -39,7 +39,7 @@ def get_entropy(prompts, responses, policy_model, tokenizer, device = "cuda"):
     entropy_list = list()
 
     for prompt, gen_text in zip(prompts, responses): 
-        tknzd = tokenize_prompt_and_output(prompt, gen_text, tokenizer)
+        tknzd = tokenize_prompt_and_output(prompt, gen_text, tokenizer, device)
         if not tknzd: 
             entropy_list.append(0.0)
             continue
@@ -108,7 +108,7 @@ def log_generations(vllm, policy_model, tokenizer, prompts, ground_truth, reward
     generated_resp = [resp.outputs[0].text for resp in responses]
     token_ids_list = [resp.outputs[0].token_ids for resp in responses]
 
-    rewards_lengths = get_rewards_and_lengths(generated_resp, ground_truth, token_ids_list, reward_func)
+    rewards_lengths = get_rewards_and_lengths(generated_resp, ground_truth, reward_func, token_ids_list)
 
     entropy_list = get_entropy(prompts, generated_resp, policy_model, tokenizer, device)
 
@@ -117,4 +117,3 @@ def log_generations(vllm, policy_model, tokenizer, prompts, ground_truth, reward
     wandb.log(metrics, step = step)
 
     return metrics
-

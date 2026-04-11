@@ -260,8 +260,8 @@ def run_grpo_microbatch_train_step(
 def run_masked_normalize(
     tensor: torch.Tensor,
     mask: torch.Tensor,
-    dim: int | None = None,
     normalize_constant: float = 1.0,
+    dim: int | None = None,
 ) -> torch.Tensor:
     """Sum over a dimension and normalize by a constant,
     considering only the elements with mask value 1.
@@ -279,7 +279,7 @@ def run_masked_normalize(
         torch.Tensor, the normalized sum, where masked elements
             (mask=0) don't contribute to the sum.
     """
-    return masked_normalize(tensor, mask, dim, normalize_constant)
+    return masked_normalize(tensor, mask, normalize_constant, dim)
 
 """
 The below adapters are used in the optional 

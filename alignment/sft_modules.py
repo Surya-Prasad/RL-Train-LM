@@ -75,29 +75,28 @@ def compute_entropy(logits):
 
 def get_response_log_probs(model, input_ids, labels, return_token_entropy):
     # Suggestion from doc: Obtain logits with model(input_ids).logits
-    logits = model(input_ids).logits.float()
-    sigma_log_p = torch.nn.functional.log_softmax(logits, dim=-1)
-    log_p = torch.gather(sigma_log_p, dim=-1, index=labels.unsqueeze(-1)).squeeze(-1)
-
+    logits = model(input_ids).logits
     # Suggestion from doc: You will want to use a numerically stable method to compute this, and are free to use methods from torch.nn.functional.
-    entropy = compute_entropy(logits) if return_token_entropy else None
+    log_probs_all = logits - torch.logsumexp(logits, dim=-1, keepdim=True)
+    log_probs = torch.gather(log_probs_all, dim=-1, index=labels.unsqueeze(-1)).squeeze(-1)
+    results = {
+        "log_probs": log_probs
+        }
+    if return_token_entropy:
+        results['token_entropy'] = compute_entropy(logits) 
+    return results
 
-    return {
-        "log_probs": log_p.float(),
-        "token_entropy": entropy.float() if entropy is not None else None
-    }
-
-def masked_normalize(tensor, mask, dim, normalize_constant):
+def masked_normalize(tensor, mask, normalize_constant, dim):
     bool_mask = mask.bool()
 
     masked_tensor = tensor.masked_fill(~bool_mask, 0)
     summed = masked_tensor.sum() if dim is None else masked_tensor.sum(dim=dim)
     return summed / normalize_constant
 
-def sft_microbatch_train_step(policy_log_probs, response_mask, gradient_accumulation_steps, normalize_constant):
+def sft_microbatch_train_step(policy_log_probs, response_mask, gradient_accumulation_steps, normalize_constant = 1.0):
     batch_size = policy_log_probs.size(0)
     negative_log_likelihood = -1 * policy_log_probs
-    masked_negative_log_likelihood = masked_normalize(negative_log_likelihood, response_mask, None, normalize_constant)
+    masked_negative_log_likelihood = masked_normalize(negative_log_likelihood, response_mask, normalize_constant, None)
 
     loss = masked_negative_log_likelihood / batch_size
 
